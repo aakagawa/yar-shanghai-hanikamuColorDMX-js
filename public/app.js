@@ -17,15 +17,15 @@ let hueShiftLocation = null;
 // Parameters for interpolation and image processing
 let currentData = null;
 let targetData = null;
-const maxValue = 1000;
-const dataResolution = 220;
-const interpolationSpeed = 0.01;
-const startIndex = 0;
-const indexRange = 500;
-const inputMin = 0;
-const inputMax = 25000;
-const outputMin = 1000;
-const outputMax = 75000;
+let maxValue = 1000;
+let startIndex = 0;
+let indexRange = 510;
+let inputMin = 0;
+let inputMax = 25000;
+let outputMin = 1000;
+let outputMax = 75000;
+let dataResolution = 220;
+let interpolationSpeed = 0.01;
 
 // WebSocket connection for data streaming
 const ws = new WebSocket('ws://127.0.0.1:3030'); // Use your server's local IP address
@@ -147,3 +147,120 @@ function updateHueShift() {
 }
 
 let startTime = Date.now(); // Start the hue shift timer
+
+// GUI
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'g') { 
+    guiVisible = !guiVisible;
+    if(!guiVisible) {
+      hideGUI();
+    }
+  } else if (guiVisible) {
+    if (event.key === 'ArrowUp') {
+      selectedParameter = (selectedParameter - 1 + 9) % 9; // 9 parameters
+    } else if (event.key === 'ArrowDown') {
+      selectedParameter = (selectedParameter + 1) % 9;
+    } else if (event.key === 'ArrowRight') {
+      adjustParameter(1);
+    } else if (event.key === 'ArrowLeft') {
+      adjustParameter(-1);
+    }
+  } else if (event.key === 's') {
+    saveSettings();
+  } else if (event.key === 'd') {
+    loadDefaultSettings();
+  }
+});
+
+window.addEventListener('load', loadSettings);
+
+let guiVisible = false; 
+let selectedParameter = 0; // Track the selected parameter 
+
+function adjustParameter(delta) {
+  switch (selectedParameter) {
+    case 0: maxValue += delta * 500; break;
+    case 1: startIndex += delta * 10; break;
+    case 2: indexRange += delta * 10; break;
+    case 3: inputMin += delta * 500; break;
+    case 4: inputMax += delta * 500; break;
+    case 5: outputMin += delta * 500; break;
+    case 6: outputMax += delta * 500; break;
+    case 7: dataResolution += delta * 1; break;
+    case 8: interpolationSpeed += delta * 0.001; break;
+  }
+}
+
+function displayGUI() {
+  if (guiVisible) {
+    const params = [
+      `maxValue: ${maxValue}`,
+      `startIndex: ${startIndex}`,
+      `indexRange: ${indexRange}`,
+      `inputMin: ${inputMin}`,
+      `inputMax: ${inputMax}`,
+      `outputMin: ${outputMin}`,
+      `outputMax: ${outputMax}`,
+      `dataResolution: ${dataResolution}`,
+      `interpolationSpeed: ${interpolationSpeed}`
+    ];
+
+    const guiElement = document.getElementById('gui');
+    guiElement.innerHTML = params.map((param, i) =>
+      `<div ${i === selectedParameter ? 'style="color: white;"' : ''}>${param}</div>`
+    ).join('');
+  }
+  requestAnimationFrame(displayGUI);
+}
+
+function hideGUI() {
+  const guiElement = document.getElementById('gui');
+  guiElement.innerHTML = ''; // Clear the GUI content to hide it
+}
+
+function saveSettings() {
+  const settings = {
+    maxValue,
+    startIndex,
+    indexRange,
+    inputMin,
+    inputMax,
+    outputMin,
+    outputMax,
+    dataResolution,
+    interpolationSpeed,
+  };
+  localStorage.setItem('settings', JSON.stringify(settings)); // Store settings in localStorage
+}
+
+function loadSettings() {
+  const settings = JSON.parse(localStorage.getItem('settings'));
+  if (settings) {
+    maxValue = settings.maxValue;
+    startIndex = settings.startIndex;
+    indexRange = settings.indexRange;
+    inputMin = settings.inputMin;  
+    inputMax = settings.inputMax;
+    outputMin = settings.outputMin;
+    outputMax = settings.outputMax;
+    dataResolution = settings.dataResolution;
+    interpolationSpeed = settings.interpolationSpeed;
+  } else {
+    loadDefaultSettings(); // If no previous settings, load defaults
+  }
+}
+
+function loadDefaultSettings() {
+  maxValue = 1000;
+  startIndex = 0;
+  indexRange = 510;
+  inputMin = 0;
+  inputMax = 25000;
+  outputMin = 1000;
+  outputMax = 75000;
+  dataResolution = 220; 
+  interpolationSpeed = 0.01;
+}
+
+displayGUI();
