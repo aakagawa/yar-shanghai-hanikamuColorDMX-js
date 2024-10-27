@@ -2,6 +2,7 @@
 
 import { initGLProgram, setUpBuffers, drawScene } from './GLProgram.js';
 import { resampleData, readProcessedPixels, analyzeProcessedImage } from './imageProcessing.js';
+import { convertRGBtoRGBW, assignDMXData, applyBrightness } from './dmx.js';
 
 const canvas = document.getElementById('canvas');
 const gl = canvas.getContext('webgl2');
@@ -13,6 +14,11 @@ setUpBuffers(gl, program);
 // Declare imageData globally
 let imageData = null;
 let hueShiftLocation = null;
+let ws = null;  // Declare WebSocket variable globallys
+
+// DMX Universes and Channels for RGBW values
+const universeBottomCells = { 2: new Uint8Array(512), 0: new Uint8Array(512) };  // Universes for bottom cells
+const universeTopCells = { 3: new Uint8Array(512), 1: new Uint8Array(512) };     // Universes for top cells
 
 // Parameters for interpolation and image processing
 let currentData = null;
@@ -27,22 +33,67 @@ let outputMax = 75000;
 let dataResolution = 220;
 let interpolationSpeed = 0.01;
 
-// WebSocket connection for data streaming
-const ws = new WebSocket('ws://127.0.0.1:3030'); // Use your server's local IP address
-ws.onmessage = (event) => {
-  const responseData = JSON.parse(event.data);
-  const endIndex = startIndex + indexRange;
-  const trimmedData = responseData.d.slice(startIndex, endIndex);
+// Parameters for dmx light processing 
+let brightnessFactor = 1.0; // Initialize user-adjustable brightness factor
+let saturationFactor = 1.0; 
 
-  // Scale and resample the data
-  const scaledData = trimmedData.map(value => {
-    const scaledValue = (((value - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin)) + outputMin;
-    return Math.round(scaledValue * 100) / 100;
-  });
+let startTime = Date.now(); //
 
-  targetData = resampleData(scaledData, dataResolution);
-  if (!currentData) currentData = targetData.slice(); // Initialize current data on the first run
-};
+// Open the WebSocket connection once
+function openWebSocket() {
+  ws = new WebSocket('ws://127.0.0.1:3030');
+
+  ws.onopen = () => console.log('WebSocket connection opened');
+  ws.onclose = () => console.log('WebSocket connection closed');
+  ws.onerror = (error) => console.error('WebSocket error:', error);
+
+  // Receive messages from the server
+  ws.onmessage = (event) => {
+    const responseData = JSON.parse(event.data);
+    const endIndex = startIndex + indexRange;
+    const trimmedData = responseData.d.slice(startIndex, endIndex);
+
+    // Scale and resample the data
+    const scaledData = trimmedData.map(value => {
+      const scaledValue = (((value - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin)) + outputMin;
+      return Math.round(scaledValue * 100) / 100;
+    });
+
+    targetData = resampleData(scaledData, dataResolution);
+    if (!currentData) currentData = targetData.slice(); // Initialize current data on the first run
+  };
+}
+
+function sendUniversesSequentially() {
+  const universes = [
+    { universe: 2, data: universeBottomCells[2] },
+    { universe: 0, data: universeBottomCells[0] },
+    { universe: 3, data: universeTopCells[3] },
+    { universe: 1, data: universeTopCells[1] },
+  ];
+
+  let index = 0;
+
+  function sendNextUniverse() {
+    if (index >= universes.length) return;
+    const { universe, data } = universes[index];
+    sendToServer(universe, data);
+    index++;
+    setTimeout(sendNextUniverse, 50); // 50ms interval between universes
+  }
+
+  sendNextUniverse();
+}
+
+// Function to send DMX data to the server
+function sendToServer(universe, dmxData) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    console.log(`Sending DMX data to Universe ${universe}:`, Array.from(dmxData).slice(0, 20));
+    ws.send(JSON.stringify({ universe, channels: Array.from(dmxData) }));
+  } else {
+    console.error('WebSocket is not open. Unable to send data.');
+  }
+}
 
 // Continuous interpolation between the current and target data
 function continuousInterpolation() {
@@ -129,13 +180,33 @@ function updateImage(data) {
   const processedPixels = readProcessedPixels(gl, canvas.width, canvas.height);
   const rowsAnalysis = analyzeProcessedImage(processedPixels, canvas.width, canvas.height, dataResolution);
   console.log(rowsAnalysis);
+
+  // Loop through each column, process the data
+  rowsAnalysis.forEach((columnData, index) => {
+    // Convert bottom and top cell colors to RGBW
+    const bottomRGBW = convertRGBtoRGBW(columnData.bottomCellColor.r, columnData.bottomCellColor.g, columnData.bottomCellColor.b);
+    const topRGBW = convertRGBtoRGBW(columnData.topCellColor.r, columnData.topCellColor.g, columnData.topCellColor.b);
+
+    // Apply brightness and saturation to bottom and top cell values
+    const bottomRGBWWithBrightness = applyBrightness(bottomRGBW, columnData.bottomPercentage, brightnessFactor);
+    const bottomRGBWFinal = applySaturation(bottomRGBWWithBrightness, saturationFactor);
+
+    const topRGBWWithBrightness = applyBrightness(topRGBW, columnData.topPercentage, brightnessFactor);
+    const topRGBWFinal = applySaturation(topRGBWWithBrightness, saturationFactor);
+
+    // Assign values to DMX universes
+    assignDMXData(universeBottomCells, universeTopCells, index, bottomRGBWFinal, topRGBWFinal);
+  });
+
+  // Send DMX data to server
+  sendUniversesSequentially();
 }
 
 // Function to handle the hue shift animation
 function updateHueShift() {
   // Calculate time elapsed in minutes
   const elapsedTime = (Date.now() - startTime) / 60000;
-  const hueShift = (elapsedTime / 12) % 1.0;
+  const hueShift = (elapsedTime / 1) % 1.0;
 
   // Set the hue shift value in the shader
   if (hueShiftLocation) {
@@ -146,7 +217,9 @@ function updateHueShift() {
   requestAnimationFrame(updateHueShift);
 }
 
-let startTime = Date.now(); // Start the hue shift timer
+// Open the WebSocket connection when the app starts
+openWebSocket();
+
 
 // GUI
 

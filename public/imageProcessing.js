@@ -27,15 +27,9 @@ export function analyzeProcessedImage(processedImageData, width, height, dataRes
   for (let col = 0; col < dataResolution; col++) {
     const colIndex = Math.floor(col * (width / dataResolution)); // Scale the column index
 
-    // Get the topmost (first) and bottommost (last) pixels in the column
-    const topCellIndex = (0 * width + colIndex) * 4; // First pixel in the column (top)
-    const bottomCellIndex = ((height - 1) * width + colIndex) * 4; // Last pixel in the column (bottom)
-
-    const topCellColor = {
-      r: processedImageData[topCellIndex],
-      g: processedImageData[topCellIndex + 1],
-      b: processedImageData[topCellIndex + 2],
-    };
+    // Get the bottommost (first) and topmost (last) pixels in the column (swapped)
+    const bottomCellIndex = (0 * width + colIndex) * 4; // First pixel in the column (bottom)
+    const topCellIndex = ((height - 1) * width + colIndex) * 4; // Last pixel in the column (top)
 
     const bottomCellColor = {
       r: processedImageData[bottomCellIndex],
@@ -43,8 +37,14 @@ export function analyzeProcessedImage(processedImageData, width, height, dataRes
       b: processedImageData[bottomCellIndex + 2],
     };
 
-    let topCloserCount = 0;
+    const topCellColor = {
+      r: processedImageData[topCellIndex],
+      g: processedImageData[topCellIndex + 1],
+      b: processedImageData[topCellIndex + 2],
+    };
+
     let bottomCloserCount = 0;
+    let topCloserCount = 0;
 
     // Iterate through all pixels in the column
     for (let y = 0; y < height; y++) {
@@ -55,27 +55,27 @@ export function analyzeProcessedImage(processedImageData, width, height, dataRes
         b: processedImageData[pixelIndex + 2],
       };
 
-      // Calculate distance to the top and bottom cells
-      const distToTop = calculateDistance(pixelColor, topCellColor);
+      // Calculate distance to the bottom and top cells (swapped)
       const distToBottom = calculateDistance(pixelColor, bottomCellColor);
+      const distToTop = calculateDistance(pixelColor, topCellColor);
 
       // Increment the closer count
-      if (distToTop < distToBottom) {
-        topCloserCount++;
-      } else {
+      if (distToBottom < distToTop) {
         bottomCloserCount++;
+      } else {
+        topCloserCount++;
       }
     }
 
-    const topPercentage = (topCloserCount / height) * 100;
-    const bottomPercentage = (bottomCloserCount / height) * 100;
+    const bottomPercentage = Math.round((bottomCloserCount / height) * 10000) / 100;
+    const topPercentage = Math.round((topCloserCount / height) * 10000) / 100;
 
     columns.push({
       column: colIndex,
-      topPercentage,
-      bottomPercentage,
-      topCellColor,
+      bottomPercentage, 
+      topPercentage,   
       bottomCellColor,
+      topCellColor,
     });
   }
 
