@@ -2,7 +2,7 @@
 
 import { initGLProgram, setUpBuffers, drawScene } from './GLProgram.js';
 import { resampleData, readProcessedPixels, analyzeProcessedImage } from './imageProcessing.js';
-import { convertRGBtoRGBW, assignDMXData, applyBrightness } from './dmx.js';
+import { convertRGBtoRGBW, assignDMXData, applyBrightness, applySaturation } from './dmx.js';
 
 const canvas = document.getElementById('canvas');
 const gl = canvas.getContext('webgl2');
@@ -33,7 +33,7 @@ let outputMax = 75000;
 let dataResolution = 220;
 let interpolationSpeed = 0.01;
 
-// Parameters for dmx light processing 
+// Parameters for dmx values preparation 
 let brightnessFactor = 1.0; // Initialize user-adjustable brightness factor
 let saturationFactor = 1.0; 
 
@@ -64,7 +64,8 @@ function openWebSocket() {
   };
 }
 
-function sendUniversesSequentially() {
+// Function to send DMX data in sequence, independently of requestAnimationFrame
+function sendDMXUniverse() {
   const universes = [
     { universe: 2, data: universeBottomCells[2] },
     { universe: 0, data: universeBottomCells[0] },
@@ -75,20 +76,19 @@ function sendUniversesSequentially() {
   let index = 0;
 
   function sendNextUniverse() {
-    if (index >= universes.length) return;
     const { universe, data } = universes[index];
     sendToServer(universe, data);
-    index++;
-    setTimeout(sendNextUniverse, 50); // 50ms interval between universes
+    index = (index + 1) % universes.length; // Loop back to the start
   }
 
-  sendNextUniverse();
+  // Send each universe in sequence every 25ms
+  setInterval(sendNextUniverse, 25);
 }
 
 // Function to send DMX data to the server
 function sendToServer(universe, dmxData) {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    console.log(`Sending DMX data to Universe ${universe}:`, Array.from(dmxData).slice(0, 20));
+    console.log(`Sending DMX data to Universe ${universe}:`, Array.from(dmxData).slice(0, 16));
     ws.send(JSON.stringify({ universe, channels: Array.from(dmxData) }));
   } else {
     console.error('WebSocket is not open. Unable to send data.');
@@ -99,13 +99,29 @@ function sendToServer(universe, dmxData) {
 function continuousInterpolation() {
   if (currentData && targetData && imageData) { // Ensure imageData is loaded
     const interpolatedData = currentData.map((value, index) => {
-      return value + (targetData[index] - value) * interpolationSpeed;
+      return value + (targetData[index] - value) * (Math.round(interpolationSpeed * 1000) / 1000); //
+        // Math.round(scaledValue * 100) / 100;
     });
 
     updateImage(interpolatedData);
     currentData = interpolatedData.slice();
   }
   requestAnimationFrame(continuousInterpolation);
+}
+
+// Function to handle the hue shift animation
+function updateHueShift() {
+  // Calculate time elapsed in minutes
+  const elapsedTime = (Date.now() - startTime) / 60000;
+  const hueShift = (elapsedTime / 1) % 1.0;
+
+  // Set the hue shift value in the shader
+  if (hueShiftLocation) {
+    gl.uniform1f(hueShiftLocation, hueShift);
+  }
+
+  // Continue updating the hue shift
+  requestAnimationFrame(updateHueShift);
 }
 
 // Load and bind the texture from the image
@@ -135,8 +151,9 @@ image.onload = () => {
   hueShiftLocation = gl.getUniformLocation(program, 'u_hueShift');
 
   // Start the WebGL rendering loop only after the image is loaded
-  continuousInterpolation();
-  updateHueShift(); // Start the hue shift animation
+  continuousInterpolation(); // Start data interpolation
+  updateHueShift(); // Start hue shift animation
+  sendDMXUniverse(); // Start sending DMX 
 };
 
 // Function to update the image and process the pixels
@@ -197,29 +214,10 @@ function updateImage(data) {
     // Assign values to DMX universes
     assignDMXData(universeBottomCells, universeTopCells, index, bottomRGBWFinal, topRGBWFinal);
   });
-
-  // Send DMX data to server
-  sendUniversesSequentially();
-}
-
-// Function to handle the hue shift animation
-function updateHueShift() {
-  // Calculate time elapsed in minutes
-  const elapsedTime = (Date.now() - startTime) / 60000;
-  const hueShift = (elapsedTime / 1) % 1.0;
-
-  // Set the hue shift value in the shader
-  if (hueShiftLocation) {
-    gl.uniform1f(hueShiftLocation, hueShift);
-  }
-
-  // Continue updating the hue shift
-  requestAnimationFrame(updateHueShift);
 }
 
 // Open the WebSocket connection when the app starts
 openWebSocket();
-
 
 // GUI
 
@@ -231,9 +229,9 @@ document.addEventListener('keydown', (event) => {
     }
   } else if (guiVisible) {
     if (event.key === 'ArrowUp') {
-      selectedParameter = (selectedParameter - 1 + 9) % 9; // 9 parameters
+      selectedParameter = (selectedParameter - 1 + 11) % 11; // 11 parameters in total 
     } else if (event.key === 'ArrowDown') {
-      selectedParameter = (selectedParameter + 1) % 9;
+      selectedParameter = (selectedParameter + 1) % 11;
     } else if (event.key === 'ArrowRight') {
       adjustParameter(1);
     } else if (event.key === 'ArrowLeft') {
@@ -262,6 +260,8 @@ function adjustParameter(delta) {
     case 6: outputMax += delta * 500; break;
     case 7: dataResolution += delta * 1; break;
     case 8: interpolationSpeed += delta * 0.001; break;
+    case 9: brightnessFactor += delta * 0.01; break;
+    case 10: saturationFactor += delta * 0.01; break;
   }
 }
 
@@ -276,7 +276,9 @@ function displayGUI() {
       `outputMin: ${outputMin}`,
       `outputMax: ${outputMax}`,
       `dataResolution: ${dataResolution}`,
-      `interpolationSpeed: ${interpolationSpeed}`
+      `interpolationSpeed: ${interpolationSpeed.toFixed(3)}`,
+      `brightnessFactor: ${brightnessFactor.toFixed(2)}`,
+      `saturationFactor: ${saturationFactor.toFixed(2)}`,
     ];
 
     const guiElement = document.getElementById('gui');
@@ -303,6 +305,8 @@ function saveSettings() {
     outputMax,
     dataResolution,
     interpolationSpeed,
+    brightnessFactor,
+    saturationFactor,
   };
   localStorage.setItem('settings', JSON.stringify(settings)); // Store settings in localStorage
 }
@@ -319,6 +323,8 @@ function loadSettings() {
     outputMax = settings.outputMax;
     dataResolution = settings.dataResolution;
     interpolationSpeed = settings.interpolationSpeed;
+    brightnessFactor = settings.brightnessFactor;
+    saturationFactor = settings.saturationFactor;
   } else {
     loadDefaultSettings(); // If no previous settings, load defaults
   }
@@ -334,6 +340,8 @@ function loadDefaultSettings() {
   outputMax = 75000;
   dataResolution = 220; 
   interpolationSpeed = 0.01;
+  brightnessFactor = 1.0;
+  saturationFactor = 1.0
 }
 
 displayGUI();

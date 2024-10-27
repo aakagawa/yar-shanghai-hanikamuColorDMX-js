@@ -3,9 +3,9 @@
 export function convertRGBtoRGBW(r, g, b) {
   const w = Math.min(r, g, b);
   return { 
-    r: r - w, 
-    g: g - w, 
-    b: b - w, 
+    r: r,//- w, 
+    g: g,//- w, 
+    b: b,//- w, 
     w: w 
   };
 }
@@ -29,7 +29,6 @@ export function applySaturation(rgbw, saturationFactor) {
     w: rgbw.w
   };
 }
-
 
 // Assign RGBW values to DMX channels with updated universe/channel mapping
 export function assignDMXData(universeBottomCells, universeTopCells, index, bottomRGBW, topRGBW) {
