@@ -24,7 +24,6 @@ export const vertexShaderSource = `
   }
 `;
 
-
 // Fragment shader program
 export const fragmentShaderSource = `
   precision mediump float;

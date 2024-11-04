@@ -24,17 +24,17 @@ const universeTopCells = { 3: new Uint8Array(512), 1: new Uint8Array(512) };    
 let currentData = null;
 let targetData = null;
 let maxValue = 1000;
-let startIndex = 0;
-let indexRange = 510;
+let startIndex = 40;
+let indexRange = 440;
 let inputMin = 0;
-let inputMax = 25000;
+let inputMax = 200000;
 let outputMin = 1000;
-let outputMax = 75000;
+let outputMax = 50000;
 let dataResolution = 220;
 let interpolationSpeed = 0.01;
 
 // Parameters for dmx values preparation 
-let brightnessFactor = 1.0; // Initialize user-adjustable brightness factor
+let brightnessFactor = 3.0; 
 let saturationFactor = 1.0; 
 
 let startTime = Date.now(); //
@@ -113,7 +113,7 @@ function continuousInterpolation() {
 function updateHueShift() {
   // Calculate time elapsed in minutes
   const elapsedTime = (Date.now() - startTime) / 60000;
-  const hueShift = (elapsedTime / 1) % 1.0;
+  const hueShift = (elapsedTime / 12) % 1.0;
 
   // Set the hue shift value in the shader
   if (hueShiftLocation) {
@@ -126,12 +126,12 @@ function updateHueShift() {
 
 // Load and bind the texture from the image
 const image = new Image();
-image.src = './assets/hanikamu_01.4.png'; // Path to your preloaded image
+image.src = './assets/hanikamu_02.2.png'; // Path to your preloaded image
 image.onload = () => {
   const canvasTmp = document.createElement('canvas');
   const ctxTmp = canvasTmp.getContext('2d');
-  const width = 2200;
-  const height = 640;
+  const width = 1100;
+  const height = 220;
   canvasTmp.width = width;
   canvasTmp.height = height;
   ctxTmp.drawImage(image, 0, 0, width, height);
@@ -158,8 +158,8 @@ image.onload = () => {
 
 // Function to update the image and process the pixels
 function updateImage(data) {
-  const width = 2200;
-  const height = 640;
+  const width = 1100;
+  const height = 220;
   const stretchedImageData = new Uint8Array(width * height * 4);
   const rowsPerSample = height / data.length;
 
@@ -330,18 +330,18 @@ function loadSettings() {
   }
 }
 
-function loadDefaultSettings() {
-  maxValue = 1000;
-  startIndex = 0;
-  indexRange = 510;
-  inputMin = 0;
-  inputMax = 25000;
-  outputMin = 1000;
-  outputMax = 75000;
-  dataResolution = 220; 
-  interpolationSpeed = 0.01;
-  brightnessFactor = 1.0;
-  saturationFactor = 1.0
-}
+// function loadDefaultSettings() {
+//   maxValue = 1000;
+//   startIndex = 0;
+//   indexRange = 510;
+//   inputMin = 0;
+//   inputMax = 25000;
+//   outputMin = 1000;
+//   outputMax = 75000;
+//   dataResolution = 220; 
+//   interpolationSpeed = 0.01;
+//   brightnessFactor = 1.0;
+//   saturationFactor = 1.0
+// }
 
 displayGUI();
